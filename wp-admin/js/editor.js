@@ -1,10 +1,14 @@
+/**
+ * @output wp-admin/js/editor.js
+ */
+
 window.wp = window.wp || {};
 
 ( function( $, wp ) {
 	wp.editor = wp.editor || {};
 
 	/**
-	 * @summary Utility functions for the editor.
+	 * Utility functions for the editor.
 	 *
 	 * @since 2.5.0
 	 */
@@ -18,7 +22,7 @@ window.wp = window.wp || {};
 				$$ = tinymce.$;
 
 				/**
-				 * @summary Handles onclick events for the Visual/Text tabs.
+				 * Handles onclick events for the Visual/Text tabs.
 				 *
 				 * @since 4.3.0
 				 *
@@ -38,7 +42,7 @@ window.wp = window.wp || {};
 		}
 
 		/**
-		 * @summary Returns the height of the editor toolbar(s) in px.
+		 * Returns the height of the editor toolbar(s) in px.
 		 *
 		 * @since 3.9.0
 		 *
@@ -58,7 +62,7 @@ window.wp = window.wp || {};
 		}
 
 		/**
-		 * @summary Switches the editor between Visual and Text mode.
+		 * Switches the editor between Visual and Text mode.
 		 *
 		 * @since 2.5.0
 		 *
@@ -99,8 +103,18 @@ window.wp = window.wp || {};
 
 				editorHeight = parseInt( textarea.style.height, 10 ) || 0;
 
-				// Save the selection
-				addHTMLBookmarkInTextAreaContent( $textarea, $ );
+				var keepSelection = false;
+				if ( editor ) {
+					keepSelection = editor.getParam( 'wp_keep_scroll_position' );
+				} else {
+					keepSelection = window.tinyMCEPreInit.mceInit[ id ] &&
+									window.tinyMCEPreInit.mceInit[ id ].wp_keep_scroll_position;
+				}
+
+				if ( keepSelection ) {
+					// Save the selection
+					addHTMLBookmarkInTextAreaContent( $textarea );
+				}
 
 				if ( editor ) {
 					editor.show();
@@ -116,8 +130,10 @@ window.wp = window.wp || {};
 						}
 					}
 
-					// Restore the selection
-					focusHTMLBookmarkInVisualEditor( editor );
+					if ( editor.getParam( 'wp_keep_scroll_position' ) ) {
+						// Restore the selection
+						focusHTMLBookmarkInVisualEditor( editor );
+					}
 				} else {
 					tinymce.init( window.tinyMCEPreInit.mceInit[ id ] );
 				}
@@ -132,7 +148,6 @@ window.wp = window.wp || {};
 					return false;
 				}
 
-				var selectionRange = null;
 				if ( editor ) {
 					// Don't resize the textarea in iOS. The iframe is forced to 100% height there, we shouldn't match it.
 					if ( ! tinymce.Env.iOS ) {
@@ -150,7 +165,11 @@ window.wp = window.wp || {};
 						}
 					}
 
-					selectionRange = findBookmarkedPosition( editor );
+					var selectionRange = null;
+
+					if ( editor.getParam( 'wp_keep_scroll_position' ) ) {
+						selectionRange = findBookmarkedPosition( editor );
+					}
 
 					editor.hide();
 
@@ -169,7 +188,7 @@ window.wp = window.wp || {};
 		}
 
 		/**
-		 * @summary Checks if a cursor is inside an HTML tag.
+		 * Checks if a cursor is inside an HTML tag or comment.
 		 *
 		 * In order to prevent breaking HTML tags when selecting text, the cursor
 		 * must be moved to either the start or end of the tag.
@@ -192,7 +211,7 @@ window.wp = window.wp || {};
 			if ( lastLtPos > lastGtPos || content.substr( cursorPosition, 1 ) === '>' ) {
 				// find what the tag is
 				var tagContent = content.substr( lastLtPos ),
-					tagMatch = tagContent.match( /<\s*(\/)?(\w+)/ );
+					tagMatch = tagContent.match( /<\s*(\/)?(\w+|\!-{2}.*-{2})/ );
 
 				if ( ! tagMatch ) {
 					return null;
@@ -212,7 +231,7 @@ window.wp = window.wp || {};
 		}
 
 		/**
-		 * @summary Check if the cursor is inside a shortcode
+		 * Checks if the cursor is inside a shortcode
 		 *
 		 * If the cursor is inside a shortcode wrapping tag, e.g. `[caption]` it's better to
 		 * move the selection marker to before or after the shortcode.
@@ -234,9 +253,13 @@ window.wp = window.wp || {};
 		function getShortcodeWrapperInfo( content, cursorPosition ) {
 			var contentShortcodes = getShortCodePositionsInText( content );
 
-			return _.find( contentShortcodes, function( element ) {
-				return cursorPosition >= element.startIndex && cursorPosition <= element.endIndex;
-			} );
+			for ( var i = 0; i < contentShortcodes.length; i++ ) {
+				var element = contentShortcodes[ i ];
+
+				if ( cursorPosition >= element.startIndex && cursorPosition <= element.endIndex ) {
+					return element;
+				}
+			}
 		}
 
 		/**
@@ -245,41 +268,24 @@ window.wp = window.wp || {};
 		 * @param {string} content The content we want to scan for shortcodes.
 		 */
 		function getShortcodesInText( content ) {
-			var shortcodes = content.match( /\[+([\w_-])+/g );
+			var shortcodes = content.match( /\[+([\w_-])+/g ),
+				result = [];
 
-			return _.uniq(
-				_.map( shortcodes, function( element ) {
-					return element.replace( /^\[+/g, '' );
-				} )
-			);
+			if ( shortcodes ) {
+				for ( var i = 0; i < shortcodes.length; i++ ) {
+					var shortcode = shortcodes[ i ].replace( /^\[+/g, '' );
+
+					if ( result.indexOf( shortcode ) === -1 ) {
+						result.push( shortcode );
+					}
+				}
+			}
+
+			return result;
 		}
 
 		/**
-		 * @summary Check if a shortcode has Live Preview enabled for it.
-		 *
-		 * Previewable shortcodes here refers to shortcodes that have Live Preview enabled.
-		 *
-		 * These shortcodes get rewritten when the editor is in Visual mode, which means that
-		 * we don't want to change anything inside them, i.e. inserting a selection marker
-		 * inside the shortcode will break it :(
-		 *
-		 * @link wp-includes/js/mce-view.js
-		 *
-		 * @param {string} shortcode The shortcode to check.
-		 * @return {boolean} If a shortcode has Live Preview or not
-		 */
-		function isShortcodePreviewable( shortcode ) {
-			var defaultPreviewableShortcodes = [ 'caption' ];
-
-			return (
-				defaultPreviewableShortcodes.indexOf( shortcode ) !== -1 ||
-				wp.mce.views.get( shortcode ) !== undefined
-			);
-
-		}
-
-		/**
-		 * @summary Get all shortcodes and their positions in the content
+		 * Gets all shortcodes and their positions in the content
 		 *
 		 * This function returns all the shortcodes that could be found in the textarea content
 		 * along with their character positions and boundaries.
@@ -295,7 +301,7 @@ window.wp = window.wp || {};
 		 * @param {string} content The content we want to scan for shortcodes
 		 */
 		function getShortCodePositionsInText( content ) {
-			var allShortcodes = getShortcodesInText( content );
+			var allShortcodes = getShortcodesInText( content ), shortcodeInfo;
 
 			if ( allShortcodes.length === 0 ) {
 				return [];
@@ -314,23 +320,40 @@ window.wp = window.wp || {};
 				 */
 				var showAsPlainText = shortcodeMatch[1] === '[';
 
-				/**
-				 * For more context check the docs for:
-				 *
-				 * @link isShortcodePreviewable
-				 *
-				 * In addition, if the shortcode will get rendered as plain text ( see above ),
-				 * we can treat it as text and use the selection markers in it.
-				 */
-				var isPreviewable = ! showAsPlainText && isShortcodePreviewable( shortcodeMatch[2] ),
-					shortcodeInfo = {
-						shortcodeName: shortcodeMatch[2],
-						showAsPlainText: showAsPlainText,
-						startIndex: shortcodeMatch.index,
-						endIndex: shortcodeMatch.index + shortcodeMatch[0].length,
-						length: shortcodeMatch[0].length,
-						isPreviewable: isPreviewable
-					};
+				shortcodeInfo = {
+					shortcodeName: shortcodeMatch[2],
+					showAsPlainText: showAsPlainText,
+					startIndex: shortcodeMatch.index,
+					endIndex: shortcodeMatch.index + shortcodeMatch[0].length,
+					length: shortcodeMatch[0].length
+				};
+
+				shortcodesDetails.push( shortcodeInfo );
+			}
+
+			/**
+			 * Get all URL matches, and treat them as embeds.
+			 *
+			 * Since there isn't a good way to detect if a URL by itself on a line is a previewable
+			 * object, it's best to treat all of them as such.
+			 *
+			 * This means that the selection will capture the whole URL, in a similar way shrotcodes
+			 * are treated.
+			 */
+			var urlRegexp = new RegExp(
+				'(^|[\\n\\r][\\n\\r]|<p>)(https?:\\/\\/[^\s"]+?)(<\\/p>\s*|[\\n\\r][\\n\\r]|$)', 'gi'
+			);
+
+			while ( shortcodeMatch = urlRegexp.exec( content ) ) {
+				shortcodeInfo = {
+					shortcodeName: 'url',
+					showAsPlainText: false,
+					startIndex: shortcodeMatch.index,
+					endIndex: shortcodeMatch.index + shortcodeMatch[ 0 ].length,
+					length: shortcodeMatch[ 0 ].length,
+					urlAtStartOfContent: shortcodeMatch[ 1 ] === '',
+					urlAtEndOfContent: shortcodeMatch[ 3 ] === ''
+				};
 
 				shortcodesDetails.push( shortcodeInfo );
 			}
@@ -359,7 +382,7 @@ window.wp = window.wp || {};
 		}
 
 		/**
-		 * @summary Get adjusted selection cursor positions according to HTML tags/shortcodes
+		 * Gets adjusted selection cursor positions according to HTML tags, comments, and shortcodes.
 		 *
 		 * Shortcodes and HTML codes are a bit of a special case when selecting, since they may render
 		 * content in Visual mode. If we insert selection markers somewhere inside them, it's really possible
@@ -399,8 +422,7 @@ window.wp = window.wp || {};
 				 */
 				if ( voidElements.indexOf( isCursorStartInTag.tagType ) !== -1 ) {
 					cursorStart = isCursorStartInTag.ltPos;
-				}
-				else {
+				} else {
 					cursorStart = isCursorStartInTag.gtPos;
 				}
 			}
@@ -411,13 +433,29 @@ window.wp = window.wp || {};
 			}
 
 			var isCursorStartInShortcode = getShortcodeWrapperInfo( content, cursorStart );
-			if ( isCursorStartInShortcode && isCursorStartInShortcode.isPreviewable ) {
-				cursorStart = isCursorStartInShortcode.startIndex;
+			if ( isCursorStartInShortcode && ! isCursorStartInShortcode.showAsPlainText ) {
+				/**
+				 * If a URL is at the start or the end of the content,
+				 * the selection doesn't work, because it inserts a marker in the text,
+				 * which breaks the embedURL detection.
+				 *
+				 * The best way to avoid that and not modify the user content is to
+				 * adjust the cursor to either after or before URL.
+				 */
+				if ( isCursorStartInShortcode.urlAtStartOfContent ) {
+					cursorStart = isCursorStartInShortcode.endIndex;
+				} else {
+					cursorStart = isCursorStartInShortcode.startIndex;
+				}
 			}
 
 			var isCursorEndInShortcode = getShortcodeWrapperInfo( content, cursorEnd );
-			if ( isCursorEndInShortcode && isCursorEndInShortcode.isPreviewable ) {
-				cursorEnd = isCursorEndInShortcode.endIndex;
+			if ( isCursorEndInShortcode && ! isCursorEndInShortcode.showAsPlainText ) {
+				if ( isCursorEndInShortcode.urlAtEndOfContent ) {
+					cursorEnd = isCursorEndInShortcode.startIndex;
+				} else {
+					cursorEnd = isCursorEndInShortcode.endIndex;
+				}
 			}
 
 			return {
@@ -427,7 +465,7 @@ window.wp = window.wp || {};
 		}
 
 		/**
-		 * @summary Adds text selection markers in the editor textarea.
+		 * Adds text selection markers in the editor textarea.
 		 *
 		 * Adds selection markers in the content of the editor `textarea`.
 		 * The method directly manipulates the `textarea` content, to allow TinyMCE plugins
@@ -455,7 +493,7 @@ window.wp = window.wp || {};
 				mode = htmlModeCursorStartPosition !== htmlModeCursorEndPosition ? 'range' : 'single',
 
 				selectedText = null,
-				cursorMarkerSkeleton = getCursorMarkerSpan( $$, '&#65279;' );
+				cursorMarkerSkeleton = getCursorMarkerSpan( $$, '&#65279;' ).attr( 'data-mce-type','bookmark' );
 
 			if ( mode === 'range' ) {
 				var markedText = textArea.value.slice( htmlModeCursorStartPosition, htmlModeCursorEndPosition ),
@@ -470,14 +508,14 @@ window.wp = window.wp || {};
 			textArea.value = [
 				textArea.value.slice( 0, htmlModeCursorStartPosition ), // text until the cursor/selection position
 				cursorMarkerSkeleton.clone()							// cursor/selection start marker
-					.addClass( 'mce_SELRES_start')[0].outerHTML,
+					.addClass( 'mce_SELRES_start' )[0].outerHTML,
 				selectedText, 											// selected text with end cursor/position marker
 				textArea.value.slice( htmlModeCursorEndPosition )		// text from last cursor/selection position to end
 			].join( '' );
 		}
 
 		/**
-		 * @summary Focus the selection markers in Visual mode.
+		 * Focuses the selection markers in Visual mode.
 		 *
 		 * The method checks for existing selection markers inside the editor DOM (Visual mode)
 		 * and create a selection between the two nodes using the DOM `createRange` selection API
@@ -487,8 +525,8 @@ window.wp = window.wp || {};
 		 * @param {Object} editor TinyMCE editor instance.
 		 */
 		function focusHTMLBookmarkInVisualEditor( editor ) {
-			var startNode = editor.$( '.mce_SELRES_start' ),
-				endNode = editor.$( '.mce_SELRES_end' );
+			var startNode = editor.$( '.mce_SELRES_start' ).attr( 'data-mce-bogus', 1 ),
+				endNode = editor.$( '.mce_SELRES_end' ).attr( 'data-mce-bogus', 1 );
 
 			if ( startNode.length ) {
 				editor.focus();
@@ -505,15 +543,18 @@ window.wp = window.wp || {};
 				}
 			}
 
-			scrollVisualModeToStartElement( editor, startNode );
-
+			if ( editor.getParam( 'wp_keep_scroll_position' ) ) {
+				scrollVisualModeToStartElement( editor, startNode );
+			}
 
 			removeSelectionMarker( startNode );
 			removeSelectionMarker( endNode );
+
+			editor.save();
 		}
 
 		/**
-		 * @summary Remove selection marker and the parent node if it is an empty paragraph.
+		 * Removes selection marker and the parent node if it is an empty paragraph.
 		 *
 		 * By default TinyMCE wraps loose inline tags in a `<p>`.
 		 * When removing selection markers an empty `<p>` may be left behind, remove it.
@@ -532,7 +573,7 @@ window.wp = window.wp || {};
 		}
 
 		/**
-		 * @summary Scrolls the content to place the selected element in the center of the screen.
+		 * Scrolls the content to place the selected element in the center of the screen.
 		 *
 		 * Takes an element, that is usually the selection start element, selected in
 		 * `focusHTMLBookmarkInVisualEditor()` and scrolls the screen so the element appears roughly
@@ -548,16 +589,28 @@ window.wp = window.wp || {};
 			var elementTop = editor.$( element ).offset().top,
 				TinyMCEContentAreaTop = editor.$( editor.getContentAreaContainer() ).offset().top,
 
-				edTools = $( '#wp-content-editor-tools' ),
-				edToolsHeight = edTools.height(),
-				edToolsOffsetTop = edTools.offset().top,
-
 				toolbarHeight = getToolbarHeight( editor ),
 
-				windowHeight = window.innerHeight || document.documentElement.clientHeight || document.body.clientHeight,
+				edTools = $( '#wp-content-editor-tools' ),
+				edToolsHeight = 0,
+				edToolsOffsetTop = 0,
+
+				$scrollArea;
+
+			if ( edTools.length ) {
+				edToolsHeight = edTools.height();
+				edToolsOffsetTop = edTools.offset().top;
+			}
+
+			var windowHeight = window.innerHeight || document.documentElement.clientHeight || document.body.clientHeight,
 
 				selectionPosition = TinyMCEContentAreaTop + elementTop,
 				visibleAreaHeight = windowHeight - ( edToolsHeight + toolbarHeight );
+
+			// There's no need to scroll if the selection is inside the visible area.
+			if ( selectionPosition < visibleAreaHeight ) {
+				return;
+			}
 
 			/**
 			 * The minimum scroll height should be to the top of the editor, to offer a consistent
@@ -567,9 +620,16 @@ window.wp = window.wp || {};
 			 * subtracting the height. This gives the scroll position where the top of the editor tools aligns with
 			 * the top of the viewport (under the Master Bar)
 			 */
-			var adjustedScroll = Math.max( selectionPosition - visibleAreaHeight / 2, edToolsOffsetTop - edToolsHeight );
+			var adjustedScroll;
+			if ( editor.settings.wp_autoresize_on ) {
+				$scrollArea = $( 'html,body' );
+				adjustedScroll = Math.max( selectionPosition - visibleAreaHeight / 2, edToolsOffsetTop - edToolsHeight );
+			} else {
+				$scrollArea = $( editor.contentDocument ).find( 'html,body' );
+				adjustedScroll = elementTop;
+			}
 
-			$( 'html,body' ).animate( {
+			$scrollArea.animate( {
 				scrollTop: parseInt( adjustedScroll, 10 )
 			}, 100 );
 		}
@@ -588,7 +648,7 @@ window.wp = window.wp || {};
 		}
 
 		/**
-		 * @summary Finds the current selection position in the Visual editor.
+		 * Finds the current selection position in the Visual editor.
 		 *
 		 * Find the current selection in the Visual editor by inserting marker elements at the start
 		 * and end of the selection.
@@ -603,10 +663,10 @@ window.wp = window.wp || {};
 		 */
 		function findBookmarkedPosition( editor ) {
 			// Get the TinyMCE `window` reference, since we need to access the raw selection.
-			var TinyMCEWIndow = editor.getWin(),
-				selection = TinyMCEWIndow.getSelection();
+			var TinyMCEWindow = editor.getWin(),
+				selection = TinyMCEWindow.getSelection();
 
-			if ( selection.rangeCount <= 0 ) {
+			if ( ! selection || selection.rangeCount < 1 ) {
 				// no selection, no need to continue.
 				return;
 			}
@@ -675,8 +735,8 @@ window.wp = window.wp || {};
 				 * This way we can adjust the selection to properly select only the content, ignoring
 				 * whitespace inserted around the selected object by the Editor.
 				 */
-				startElement.attr('data-mce-object-selection', 'true');
-				endElement.attr('data-mce-object-selection', 'true');
+				startElement.attr( 'data-mce-object-selection', 'true' );
+				endElement.attr( 'data-mce-object-selection', 'true' );
 
 				editor.$( startNode ).before( startElement[0] );
 				editor.$( startNode ).after( endElement[0] );
@@ -755,7 +815,7 @@ window.wp = window.wp || {};
 		}
 
 		/**
-		 * @summary Selects text in the TinyMCE `textarea`.
+		 * Selects text in the TinyMCE `textarea`.
 		 *
 		 * Selects the text in TinyMCE's textarea that's between `selection.start` and `selection.end`.
 		 *
@@ -776,19 +836,16 @@ window.wp = window.wp || {};
 				end = selection.end || selection.start;
 
 			if ( textArea.focus ) {
-				// focus and scroll to the position
+				// Wait for the Visual editor to be hidden, then focus and scroll to the position
 				setTimeout( function() {
+					textArea.setSelectionRange( start, end );
 					if ( textArea.blur ) {
 						// defocus before focusing
 						textArea.blur();
 					}
 					textArea.focus();
 				}, 100 );
-
-				textArea.focus();
 			}
-
-			textArea.setSelectionRange( start, end );
 		}
 
 		// Restore the selection when the editor is initialized. Needed when the Text editor is the default.
@@ -799,7 +856,7 @@ window.wp = window.wp || {};
 		} );
 
 		/**
-		 * @summary Replaces <p> tags with two line breaks. "Opposite" of wpautop().
+		 * Replaces <p> tags with two line breaks. "Opposite" of wpautop().
 		 *
 		 * Replaces <p> tags with two line breaks except where the <p> has attributes.
 		 * Unifies whitespace.
@@ -938,7 +995,7 @@ window.wp = window.wp || {};
 		}
 
 		/**
-		 * @summary Replaces two line breaks with a paragraph tag and one line break with a <br>.
+		 * Replaces two line breaks with a paragraph tag and one line break with a <br>.
 		 *
 		 * Similar to `wpautop()` in formatting.php.
 		 *
@@ -958,10 +1015,6 @@ window.wp = window.wp || {};
 
 			// Normalize line breaks.
 			text = text.replace( /\r\n|\r/g, '\n' );
-
-			if ( text.indexOf( '\n' ) === -1 ) {
-				return text;
-			}
 
 			// Remove line breaks from <object>.
 			if ( text.indexOf( '<object' ) !== -1 ) {
@@ -1071,7 +1124,7 @@ window.wp = window.wp || {};
 		}
 
 		/**
-		 * @summary Fires custom jQuery events `beforePreWpautop` and `afterPreWpautop` when jQuery is available.
+		 * Fires custom jQuery events `beforePreWpautop` and `afterPreWpautop` when jQuery is available.
 		 *
 		 * @since 2.9.0
 		 *
@@ -1097,7 +1150,7 @@ window.wp = window.wp || {};
 		}
 
 		/**
-		 * @summary Fires custom jQuery events `beforeWpautop` and `afterWpautop` when jQuery is available.
+		 * Fires custom jQuery events `beforeWpautop` and `afterWpautop` when jQuery is available.
 		 *
 		 * @since 2.9.0
 		 *
@@ -1151,8 +1204,9 @@ window.wp = window.wp || {};
 	}
 
 	/**
-	 * @namespace {SwitchEditors} switchEditors
 	 * Expose the switch editors to be used globally.
+	 *
+	 * @namespace switchEditors
 	 */
 	window.switchEditors = new SwitchEditors();
 

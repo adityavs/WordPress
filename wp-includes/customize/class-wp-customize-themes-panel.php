@@ -46,7 +46,7 @@ class WP_Customize_Themes_Panel extends WP_Customize_Panel {
 				?>
 
 				<?php if ( current_user_can( 'switch_themes' ) ) : ?>
-					<button type="button" class="button change-theme" aria-label="<?php _e( 'Change theme' ); ?>"><?php _ex( 'Change', 'theme' ); ?></button>
+					<button type="button" class="button change-theme" aria-label="<?php esc_attr_e( 'Change theme' ); ?>"><?php _ex( 'Change', 'theme' ); ?></button>
 				<?php endif; ?>
 			</h3>
 			<ul class="accordion-sub-container control-panel-content"></ul>
@@ -88,11 +88,13 @@ class WP_Customize_Themes_Panel extends WP_Customize_Panel {
 					</div>
 				<# } #>
 			<?php endif; ?>
+
+			<div class="customize-control-notifications-container"></div>
 		</li>
 		<li class="customize-themes-full-container-container">
-			<ul class="customize-themes-full-container">
-				<li class="customize-themes-notifications"></li>
-			</ul>
+			<div class="customize-themes-full-container">
+				<div class="customize-themes-notifications"></div>
+			</div>
 		</li>
 		<?php
 	}

@@ -1,5 +1,7 @@
 /*
  * Script run inside a Customizer preview frame.
+ *
+ * @output wp-includes/js/customize-preview.js
  */
 (function( exports, $ ){
 	var api = wp.customize,
@@ -36,7 +38,7 @@
 			newQueryParams = api.utils.parseQueryString( urlParser.search.substr( 1 ) );
 
 			newQueryParams.customize_changeset_uuid = oldQueryParams.customize_changeset_uuid;
-			if ( api.settings.changeset.autosaved ) {
+			if ( oldQueryParams.customize_autosaved ) {
 				newQueryParams.customize_autosaved = 'on';
 			}
 			if ( oldQueryParams.customize_theme ) {
@@ -235,7 +237,7 @@
 	 * @returns {void}
 	 */
 	api.addLinkPreviewing = function addLinkPreviewing() {
-		var linkSelectors = 'a[href], area';
+		var linkSelectors = 'a[href], area[href]';
 
 		// Inject links into initial document.
 		$( document.body ).find( linkSelectors ).each( function() {
@@ -335,6 +337,11 @@
 	api.prepareLinkPreview = function prepareLinkPreview( element ) {
 		var queryParams, $element = $( element );
 
+        // Skip elements with no href attribute. Check first to avoid more expensive checks down the road
+        if ( ! element.hasAttribute( 'href' ) ) {
+            return;
+        }
+
 		// Skip links in admin bar.
 		if ( $element.closest( '#wpadminbar' ).length ) {
 			return;
@@ -377,11 +384,6 @@
 			queryParams.customize_messenger_channel = api.settings.channel;
 		}
 		element.search = $.param( queryParams );
-
-		// Prevent links from breaking out of preview iframe.
-		if ( api.settings.channel ) {
-			element.target = '_self';
-		}
 	};
 
 	/**
@@ -451,6 +453,10 @@
 			if ( ! api.settings.theme.active ) {
 				queryParams.customize_theme = api.settings.theme.stylesheet;
 			}
+
+			// Ensure preview nonce is included with every customized request, to allow post data to be read.
+			queryParams.customize_preview_nonce = api.settings.nonce.preview;
+
 			urlParser.search = $.param( queryParams );
 			options.url = urlParser.href;
 		};
@@ -775,7 +781,7 @@
 			api.settings.changeset.uuid = uuid;
 
 			// Update UUIDs in links and forms.
-			$( document.body ).find( 'a[href], area' ).each( function() {
+			$( document.body ).find( 'a[href], area[href]' ).each( function() {
 				api.prepareLinkPreview( this );
 			} );
 			$( document.body ).find( 'form' ).each( function() {
@@ -809,7 +815,7 @@
 
 			api.settings.changeset.autosaved = true; // Start deferring to any autosave once changeset is updated.
 
-			$( document.body ).find( 'a[href], area' ).each( function() {
+			$( document.body ).find( 'a[href], area[href]' ).each( function() {
 				api.prepareLinkPreview( this );
 			} );
 			$( document.body ).find( 'form' ).each( function() {

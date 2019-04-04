@@ -1,3 +1,7 @@
+/**
+ * @output wp-includes/js/wp-a11y.js
+ */
+
 /** @namespace wp */
 window.wp = window.wp || {};
 
@@ -14,9 +18,10 @@ window.wp = window.wp || {};
 	 * @since 4.2.0
 	 * @since 4.3.0 Introduced the 'ariaLive' argument.
 	 *
-	 * @param {String} message  The message to be announced by Assistive Technologies.
-	 * @param {String} ariaLive Optional. The politeness level for aria-live. Possible values:
-	 *                          polite or assertive. Default polite.
+	 * @param {String} message    The message to be announced by Assistive Technologies.
+	 * @param {String} [ariaLive] The politeness level for aria-live. Possible values:
+	 *                            polite or assertive. Default polite.
+	 * @returns {void}
 	 */
 	function speak( message, ariaLive ) {
 		// Clear previous messages to allow repeated strings being read out.

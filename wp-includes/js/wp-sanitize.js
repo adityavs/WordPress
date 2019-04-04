@@ -1,3 +1,7 @@
+/**
+ * @output wp-includes/js/wp-sanitize.js
+ */
+
 ( function () {
 
 	window.wp = window.wp || {};
@@ -32,7 +36,7 @@
 		 *
 		 * @return Sanitized text. False on failure.
 		 */
-		sanitizeText: function( text ) {
+		stripTagsAndEncodeText: function( text ) {
 			var _text = wp.sanitize.stripTags( text ),
 				textarea = document.createElement( 'textarea' );
 
